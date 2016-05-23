@@ -1,0 +1,100 @@
+---
+title: "Machine learning course project"
+author: "Jing Shi"
+date: "May 21, 2016"
+output: html_document
+---
+# Summary
+
+The goal of the project is to predict the manner in which people did the exercise.The analysis uses data from a personal fitness monitor like Jawbone Up, Nike FuelBand or Fitbit. Also, this analysis uses data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.I fit the follosing six machine learning models: Random forest; Linear discriminant analysis; Naive Bayes; K nearest neighbor; gradient boosting machine; and Resursive partitioning and regression tree. Final prediction model, which is random forest model, is choosen base on the lowest out of sample error rate. 
+
+# Data Processing
+
+### load function liabraries:
+```{r lib,results='hide', warning=FALSE,message=FALSE}
+require(caret); require(randomForest); require(MASS); require(klaR); require(gbm); require(plyr); library(e1071);
+require(splines); require(rpart); require(knitr)
+```
+
+### load data:
+```{r load,results='hide'}
+ train=read.csv("/Users/jingshi/Desktop/coursera/ML/pml-training.csv",sep=",",na.strings=c("NA","#DIV/0!",""))
+test=read.csv("/Users/jingshi/Desktop/coursera/ML/pml-testing.csv",sep=",",na.strings=c("NA","#DIV/0!",""))
+str(train)
+```
+
+The training file has 19,622 rows and 159 columns plus the class outcome. The first columns include a row number, timestamps and some data that will not be used in prediction. So these need to be removed. Also, columns with >50% missing data will be removed.
+
+```{r clean,results='hide'}
+traina<-train[, -(1:7)]
+traina<-traina[, colSums(is.na(traina)) < nrow(traina) * 0.5]
+
+testa <- test[, -(1:7)]                                            
+testa  <- testa[, colSums(is.na(testa))  < nrow(testa) * 0.5]
+```
+
+# Analysis
+### partition training and testing sets:
+```{r split,results='hide'}
+set.seed(173)
+inTrain <- createDataPartition(traina$classe, p=0.70, list=FALSE)       
+training <- traina[ inTrain, ]
+validatn <- traina[-inTrain, ]
+```
+
+### Model fitting:
+Fit different models using 10-fold cross validation, apply each model to the validation sets, then compared the predictions to the actual outcomes to create confusion matrix for each model:
+```{r fit,results='hide',warning=FALSE,message=FALSE}
+tcontrol <- trainControl(method="cv", number=10, verboseIter = FALSE) 
+modelRF  <- train(classe ~ ., data=training, method="rf",  trControl=tcontrol, ntree=200)
+modelLDA <- train(classe ~ ., data=training, method="lda", trControl=tcontrol)
+modelNB  <- train(classe ~ ., data=training, method="nb" , trControl=tcontrol)
+modelKNN <- train(classe ~ ., data=training, method="knn", trControl=tcontrol)
+modelGBM <- train(classe ~ ., data=training, method="gbm", trControl=tcontrol, verbose=FALSE)
+modelRP  <- train(classe ~ ., data=training, method="rpart",trControl=tcontrol, tuneLength=10)
+
+pRF  <- predict(modelRF,  validatn)
+pLDA <- predict(modelLDA, validatn)
+pNB  <- predict(modelNB,  validatn)
+pKNN <- predict(modelKNN, validatn)
+pGBM <- predict(modelGBM, validatn)
+pRP  <- predict(modelRP,  validatn)
+
+cmRF  <- confusionMatrix(validatn$classe, pRF)
+cmLDA <- confusionMatrix(validatn$classe, pLDA)
+cmNB  <- confusionMatrix(validatn$classe, pNB)
+cmKNN <- confusionMatrix(validatn$classe, pKNN)
+cmGBM <- confusionMatrix(validatn$classe, pGBM)
+cmRP  <- confusionMatrix(validatn$classe, pRP)
+```
+
+### Compare models
+For each model type used we look at training accuracy (performance in building the model), validation accuracy (model performance against a separate data set than we used to train the model), validation kappa (measuring validation agreement between actual and predicted values) and the out of sample error - which is one minus validation accuracy.
+
+```{r eval}
+ModelType <- c("Random forest", "Linear discriminant","Naive Bayes", "K nearest neighbor", "Gradient boosting machine","Rpart tree")
+TrainAccuracy <- c(max(modelRF$results$Accuracy), max(modelLDA$results$Accuracy), 
+                   max(modelNB$results$Accuracy), max(modelGBM$results$Accuracy), 
+                   max(modelKNN$results$Accuracy), max(modelRP$results$Accuracy))
+ValidationAccuracy <- c(cmRF$overall[1],  cmLDA$overall[1], cmNB$overall[1], 
+                        cmKNN$overall[1], cmGBM$overall[1], cmRP$overall[1])
+ValidationKappa    <- c(cmRF$overall[2],  cmLDA$overall[2], cmNB$overall[2], 
+                        cmKNN$overall[2], cmGBM$overall[2], cmRP$overall[2])
+OutOfSampleErr <- 1 - ValidationAccuracy
+metrics <- data.frame(ModelType, TrainAccuracy, ValidationAccuracy, ValidationKappa, OutOfSampleErr)
+kable(metrics, digits=5)
+```
+
+```{r RF}
+print(modelRF)
+```
+
+# Conclusion
+The random forest method is chosen to make the final predictions because it has the lowest out of sample error (0.0054376). Looking at the random forest model and the confusion matrix: accuracy 0.9945624 and kappa 0.9931211 appear to be quite good and the p-value is very low so this model seems to be doing a good job of predicting the output using the validation predictors.
+
+# Predicting Test Values
+```{r predict}
+pTesting <- predict(modelRF, testa)
+pTesting
+testa$classe <- pTesting 
+```
